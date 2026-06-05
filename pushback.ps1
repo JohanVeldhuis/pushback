@@ -1,55 +1,61 @@
-# --- CONFIGURATION ---
-$rootPath    = "C:\MSFS2024\Community\fsltl-traffic-base\SimObjects\Airplanes\"
-$targetFile  = "aircraft.cfg"
-$lineToFind  = "PUSHBACK = 1"
-$lineToWrite = "PUSHBACK = 0"
-$logFile     = "c:\development\log.txt"
+#requires -Version 5.1
+<#
+.SYNOPSIS
+    CLI entry point for the Pushback engine.
 
-# --- DRY RUN MODE ---
-$dryRun = $false   # Set to $false to actually modify files
+.DESCRIPTION
+    Thin wrapper around src/Pushback.Engine.psm1. Provides backward
+    compatibility for the original single-file workflow while routing
+    all real logic through the shared engine module so the CLI and the
+    GUI behave identically.
 
-# Start log
-"--- Script started: $(Get-Date) ---" | Out-File -FilePath $logFile -Encoding UTF8
+.EXAMPLE
+    .\pushback.ps1 -CommunityFolder 'C:\MSFS\Community' -Action DryRun
 
-# --- SCRIPT ---
-Get-ChildItem -Path $rootPath -Recurse -File -Filter $targetFile | ForEach-Object {
-    $file = $_.FullName
-    Write-Host "Processing: $file"
+.EXAMPLE
+    .\pushback.ps1 -CommunityFolder 'C:\MSFS\Community' -Action DisablePushback
 
-    $content = Get-Content $file
-    $changed = $false
+.NOTES
+    Default -Action is DryRun so running the script with no destructive
+    flags never mutates files (constitution Principle III).
+#>
 
-    # Simulate replacement
-    $newContent = $content | ForEach-Object {
-        if ($_ -eq $lineToFind) {
-            $changed = $true
-            $lineToWrite
-        } else {
-            $_
-        }
-    }
+[CmdletBinding()]
+param(
+    [Parameter(Mandatory)]
+    [string] $CommunityFolder,
 
-    if ($dryRun) {
-        # DRY RUN: Do not modify anything
-        if ($changed) {
-            "DRY-RUN (WOULD CHANGE): $file" | Out-File -FilePath $logFile -Append -Encoding UTF8
-        } else {
-            "DRY-RUN (NO CHANGE): $file" | Out-File -FilePath $logFile -Append -Encoding UTF8
-        }
-    }
-    else {
-        # REAL MODE: Backup + write changes
-        $backup = "$file.bak"
-        Copy-Item -Path $file -Destination $backup -Force
+    [ValidateSet('DisablePushback','EnablePushback','DryRun','RestoreBackups')]
+    [string] $Action = 'DryRun',
 
-        Set-Content -Path $file -Value $newContent
+    [string] $LogPath = (Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Pushback\pushback.log'),
 
-        if ($changed) {
-            "CHANGED: $file" | Out-File -FilePath $logFile -Append -Encoding UTF8
-        } else {
-            "NO CHANGE: $file" | Out-File -FilePath $logFile -Append -Encoding UTF8
-        }
+    [switch] $OverwriteExistingBackups
+)
+
+Set-StrictMode -Version Latest
+$ErrorActionPreference = 'Stop'
+
+Import-Module (Join-Path $PSScriptRoot 'src\Pushback.Engine.psm1') -Force
+
+$progress = {
+    param($processed, $total, $entry)
+    if ($entry) {
+        Write-Host ("Processing: {0}" -f $entry.FullPath)
     }
 }
 
-"--- Script finished: $(Get-Date) ---" | Out-File -FilePath $logFile -Append -Encoding UTF8
+$run = Invoke-PushbackEngine `
+    -CommunityFolder $CommunityFolder `
+    -Action $Action `
+    -LogPath $LogPath `
+    -ProgressCallback $progress `
+    -OverwriteExistingBackups:$OverwriteExistingBackups
+
+Write-Host ''
+Write-Host ("Done. Action={0}  Changed={1}  WouldChange={2}  Unchanged={3}  Errors={4}" -f `
+    $Action, $run.Counts.Changed, $run.Counts.WouldChange, $run.Counts.Unchanged, $run.Counts.Errors)
+Write-Host ("Log: {0}" -f $run.LogPath)
+
+# Emit the run object to the success stream so power users can pipe it.
+$run
