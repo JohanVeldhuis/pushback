@@ -1,0 +1,16 @@
+# --- Pushback runtime artifacts ---
+# Backup files created by the engine before any destructive write.
+*.bak
+
+# Default log location (relative). Real default lives in %LOCALAPPDATA%\Pushback\.
+pushback.log
+
+# Backups produced inside the fixture tree by running the smoke script.
+tests/fixtures/Community/**/*.bak
+
+# --- Generic ---
+.vscode/*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
