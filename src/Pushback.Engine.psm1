@@ -92,6 +92,54 @@ function Get-IsoUtcTimestamp {
     return [DateTime]::UtcNow.ToString("yyyy-MM-ddTHH:mm:ssZ")
 }
 
+function Get-PushbackScanRoots {
+    <#
+    .SYNOPSIS
+        Resolve the list of directories the engine will recursively scan.
+
+    .DESCRIPTION
+        If $PackageFilter is null or empty, returns a single-element array
+        containing $CommunityFolder (current behaviour - scan everything).
+
+        Otherwise, returns the FullName of every immediate child directory
+        of $CommunityFolder whose name matches at least one of the
+        wildcard patterns in $PackageFilter (case-insensitive, PowerShell
+        -like semantics). Patterns like 'AIG*' or 'fsltl-traffic-base'
+        let callers scope a run to a subset of installed packages without
+        the engine hardcoding any package names (Principle I).
+
+        Returns an empty array if patterns were supplied but no subfolder
+        matched; the caller can detect this and log a warning.
+    #>
+    [CmdletBinding()]
+    [OutputType([string[]])]
+    param(
+        [Parameter(Mandatory)][string]$CommunityFolder,
+        [AllowNull()][AllowEmptyCollection()][string[]]$PackageFilter
+    )
+
+    if (-not $PackageFilter -or $PackageFilter.Count -eq 0) {
+        return ,@($CommunityFolder)
+    }
+
+    $patterns = @($PackageFilter | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | ForEach-Object { $_.Trim() })
+    if ($patterns.Count -eq 0) {
+        return ,@($CommunityFolder)
+    }
+
+    $matches = Get-ChildItem -LiteralPath $CommunityFolder -Directory -ErrorAction SilentlyContinue |
+        Where-Object {
+            $name = $_.Name
+            foreach ($p in $patterns) {
+                if ($name -like $p) { return $true }
+            }
+            return $false
+        } |
+        ForEach-Object { $_.FullName }
+
+    return ,@($matches)
+}
+
 function Get-AircraftConfigState {
     <#
     .SYNOPSIS
@@ -253,6 +301,15 @@ function Invoke-PushbackEngine {
         # $total may be -1 if the count is not yet known.
         [AllowNull()][scriptblock] $ProgressCallback = $null,
 
+        # Optional list of wildcard patterns (PowerShell -like syntax)
+        # matched against the immediate child folder names of
+        # $CommunityFolder. When supplied, the engine only recurses
+        # into matching subfolders. Examples: 'AIG*', 'fsltl-traffic-base'.
+        # When null/empty (default), the entire Community folder is
+        # scanned, preserving the original behaviour.
+        [AllowNull()][AllowEmptyCollection()]
+        [string[]] $PackageFilter = $null,
+
         # For RunResult only; defaults to the resolved community folder name.
         [string] $TargetSim = ''
     )
@@ -281,9 +338,21 @@ function Invoke-PushbackEngine {
         -LogPath $LogPath `
         -StartedAt $startedAt
 
+    # Resolve which directories the engine will actually walk. When the
+    # caller supplied -PackageFilter but no subfolder matched, log a
+    # clear warning and return an empty (but well-formed) result rather
+    # than silently scanning everything.
+    $scanRoots = Get-PushbackScanRoots -CommunityFolder $resolvedFolder -PackageFilter $PackageFilter
+    if ($PackageFilter -and $PackageFilter.Count -gt 0 -and $scanRoots.Count -eq 0) {
+        Write-LogEntry -LogPath $LogPath -Line ("WARN: -PackageFilter matched no subfolders under '{0}' (patterns: {1})" -f $resolvedFolder, ($PackageFilter -join ', '))
+        Write-LogEntry -LogPath $LogPath -Line "--- Script finished: $(Get-IsoUtcTimestamp) ---"
+        $result.FinishedAt = [DateTime]::UtcNow
+        return $result
+    }
+
     try {
         if ($Action -eq 'RestoreBackups') {
-            Invoke-RestoreBackups -CommunityFolder $resolvedFolder -Result $result `
+            Invoke-RestoreBackups -ScanRoots $scanRoots -Result $result `
                 -CancelFlag $CancelFlag -ProgressCallback $ProgressCallback
             return $result
         }
@@ -295,10 +364,15 @@ function Invoke-PushbackEngine {
         # Backup collision pre-check (only for real Disable/Enable runs).
         if (-not $isDryRun -and -not $OverwriteExistingBackups) {
             # Streaming check - we stop at the first .bak found so this
-            # stays cheap even on huge trees.
-            $collision = Get-ChildItem -LiteralPath $resolvedFolder -Recurse -File `
-                -Filter 'aircraft.cfg.bak' -ErrorAction SilentlyContinue |
-                Select-Object -First 1
+            # stays cheap even on huge trees. Honours -PackageFilter so a
+            # stray .bak in an unrelated package can't block a scoped run.
+            $collision = $null
+            foreach ($root in $scanRoots) {
+                $collision = Get-ChildItem -LiteralPath $root -Recurse -File `
+                    -Filter 'aircraft.cfg.bak' -ErrorAction SilentlyContinue |
+                    Select-Object -First 1
+                if ($collision) { break }
+            }
             if ($collision) {
                 $err = [System.Management.Automation.ErrorRecord]::new(
                     [System.InvalidOperationException]::new("Existing .bak files found (e.g. $($collision.FullName)). Re-run with -OverwriteExistingBackups to proceed."),
@@ -322,7 +396,10 @@ function Invoke-PushbackEngine {
         $processed = 0
         $total     = -1  # unknown during streaming
 
-        Get-ChildItem -LiteralPath $resolvedFolder -Recurse -File -Filter 'aircraft.cfg' -ErrorAction SilentlyContinue |
+        $scanRoots |
+            ForEach-Object {
+                Get-ChildItem -LiteralPath $_ -Recurse -File -Filter 'aircraft.cfg' -ErrorAction SilentlyContinue
+            } |
             ForEach-Object {
                 if ($null -ne $CancelFlag -and $CancelFlag.Value) {
                     $result.CancelledByUser = $true
@@ -396,14 +473,17 @@ function Invoke-PushbackEngine {
 function Invoke-RestoreBackups {
     [CmdletBinding()]
     param(
-        [Parameter(Mandatory)][string]$CommunityFolder,
+        [Parameter(Mandatory)][string[]]$ScanRoots,
         [Parameter(Mandatory)][pscustomobject]$Result,
         [AllowNull()]$CancelFlag,
         [AllowNull()][scriptblock]$ProgressCallback
     )
 
     $processed = 0
-    Get-ChildItem -LiteralPath $CommunityFolder -Recurse -File -Filter 'aircraft.cfg.bak' -ErrorAction SilentlyContinue |
+    $ScanRoots |
+        ForEach-Object {
+            Get-ChildItem -LiteralPath $_ -Recurse -File -Filter 'aircraft.cfg.bak' -ErrorAction SilentlyContinue
+        } |
         ForEach-Object {
             if ($null -ne $CancelFlag -and $CancelFlag.Value) {
                 $Result.CancelledByUser = $true
