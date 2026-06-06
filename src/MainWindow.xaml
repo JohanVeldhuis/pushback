@@ -1,6 +1,6 @@
 <Window xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Pushback"
+        Title="Addon Pushback Manager"
         Width="760" Height="640"
         MinWidth="600" MinHeight="500"
         WindowStartupLocation="CenterScreen">

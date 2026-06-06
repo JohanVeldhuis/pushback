@@ -99,7 +99,7 @@ function Invoke-UiSafely {
         try {
             [System.Windows.MessageBox]::Show(
                 "$Tag failed:`n`n$($_.Exception.Message)`n`nSee $script:diagLogPath for the full trace.",
-                'Pushback — internal error', 'OK', 'Error') | Out-Null
+                'Addon Pushback Manager — internal error', 'OK', 'Error') | Out-Null
         } catch { }
     }
 }
@@ -521,7 +521,7 @@ function Start-EngineAction {
     if (-not $folder) {
         [System.Windows.MessageBox]::Show(
             'No Community folder selected. Pick a sim above or use Browse…',
-            'Pushback', 'OK', 'Warning') | Out-Null
+            'Addon Pushback Manager', 'OK', 'Warning') | Out-Null
         return
     }
 
@@ -558,7 +558,7 @@ function Start-EngineAction {
                      "If you only want to affect specific packages (e.g. fsltl-traffic-base or AIG*), " +
                      "tick them in the Packages list first.`n`nContinue anyway?") -f $verb, $folder, $impactLine
             $res = [System.Windows.MessageBox]::Show(
-                $msg, 'Pushback — no package filter selected', 'OKCancel', 'Warning')
+                $msg, 'Addon Pushback Manager — no package filter selected', 'OKCancel', 'Warning')
             if ($res -ne 'OK') { return }
         }
     }
@@ -717,7 +717,7 @@ function Complete-EngineAction {
             } else {
                 Set-Status "Run failed: $($outcome.Message)"
                 [System.Windows.MessageBox]::Show(
-                    $outcome.Message, 'Pushback — error', 'OK', 'Error') | Out-Null
+                    $outcome.Message, 'Addon Pushback Manager — error', 'OK', 'Error') | Out-Null
             }
             return
         }
@@ -761,7 +761,7 @@ function Invoke-BrowseFolder {
     } else {
         [System.Windows.MessageBox]::Show(
             "The selected folder doesn't contain any aircraft.cfg files.`n`n$picked",
-            'Pushback', 'OK', 'Warning') | Out-Null
+            'Addon Pushback Manager', 'OK', 'Warning') | Out-Null
     }
 
     Update-ActionButtonsEnabled
@@ -849,7 +849,7 @@ $ctl.btnOpenLog.Add_Click({
     } else {
         [System.Windows.MessageBox]::Show(
             "No log yet — run an action first.`n`nExpected at:`n$path",
-            'Pushback', 'OK', 'Information') | Out-Null
+            'Addon Pushback Manager', 'OK', 'Information') | Out-Null
     }
 })
 
@@ -857,7 +857,7 @@ $window.Add_Closing({
     if ($script:isRunning) {
         $res = [System.Windows.MessageBox]::Show(
             'A run is in progress. Cancel and quit?',
-            'Pushback', 'OKCancel', 'Question')
+            'Addon Pushback Manager', 'OKCancel', 'Question')
         if ($res -ne 'OK') {
             $_.Cancel = $true
             return
@@ -884,7 +884,7 @@ $window.Dispatcher.add_UnhandledException({
     try {
         [System.Windows.MessageBox]::Show(
             "An unhandled UI error occurred:`n`n$($e.Exception.Message)`n`nSee $script:diagLogPath",
-            'Pushback — internal error', 'OK', 'Error') | Out-Null
+            'Addon Pushback Manager — internal error', 'OK', 'Error') | Out-Null
     } catch { }
     $e.Handled = $true
 })

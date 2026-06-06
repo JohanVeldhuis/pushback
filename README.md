@@ -1,4 +1,4 @@
-# Pushback
+# Addon Pushback Manager
 
 A small Windows utility that toggles the **PUSHBACK** flag in every
 `aircraft.cfg` under your Microsoft Flight Simulator **Community**
@@ -41,7 +41,7 @@ Everything is logged with ISO-8601 UTC timestamps to
 
 1. Download or clone this repository.
 2. Close MSFS if it's running.
-3. Double-click [`launcher/Pushback.cmd`](launcher/Pushback.cmd).
+3. Double-click [`launcher/Pushback.cmd`](launcher/Pushback.cmd) to launch Addon Pushback Manager.
 4. The window opens with your Community folder auto-detected.
 5. Click **Dry run** first to preview the changes.
 6. Click **Disable pushback** (or **Enable pushback**) to apply them.

@@ -1,5 +1,5 @@
 @echo off
-REM Pushback double-click launcher.
+REM Addon Pushback Manager double-click launcher.
 REM Prefers PowerShell 7 (pwsh.exe) when available; falls back to Windows
 REM PowerShell 5.1 (powershell.exe, preinstalled on Windows 10/11).
 REM
