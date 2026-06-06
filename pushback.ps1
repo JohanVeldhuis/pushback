@@ -15,6 +15,10 @@
 .EXAMPLE
     .\pushback.ps1 -CommunityFolder 'C:\MSFS\Community' -Action DisablePushback
 
+.EXAMPLE
+    .\pushback.ps1 -CommunityFolder 'C:\MSFS\Community' `
+        -PackageFilter 'fsltl-traffic-base','AIG*' -Action DisablePushback
+
 .NOTES
     Default -Action is DryRun so running the script with no destructive
     flags never mutates files (constitution Principle III).
@@ -30,7 +34,15 @@ param(
 
     [string] $LogPath = (Join-Path -Path $env:LOCALAPPDATA -ChildPath 'Pushback\pushback.log'),
 
-    [switch] $OverwriteExistingBackups
+    [switch] $OverwriteExistingBackups,
+
+    # Optional wildcard list (PowerShell -like syntax) matched against the
+    # immediate child folder names of -CommunityFolder. When supplied, the
+    # engine only recurses into matching subfolders. Examples:
+    #   -PackageFilter 'fsltl-traffic-base','AIG*'
+    # When omitted, the entire Community folder is scanned (original
+    # behaviour).
+    [string[]] $PackageFilter
 )
 
 Set-StrictMode -Version Latest
@@ -50,6 +62,7 @@ $run = Invoke-PushbackEngine `
     -Action $Action `
     -LogPath $LogPath `
     -ProgressCallback $progress `
+    -PackageFilter $PackageFilter `
     -OverwriteExistingBackups:$OverwriteExistingBackups
 
 Write-Host ''
